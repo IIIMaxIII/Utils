@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# Скрипт переключения governors CPU
+# Использование: sudo ./governor.sh [p|ps|o|s|cur]
+
+GOVERNOR="${1:-cur}"
+AVAILABLE_GOVERNORS=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null)
+
+# Цвета
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;94m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Иконки
+ICON_CPU="💻"
+ICON_PERF="🚀"
+ICON_SAVE="🔋"
+ICON_ADAPT="⚡"
+ICON_CUR="📊"
+
+# Проверка прав
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}×${NC} Требуются root права"
+    exit 1
+fi
+
+get_cpu_info() {
+    # Получаем информацию о топологии
+    PHYSICAL_CORES=$(lscpu | grep "Core(s) per socket" | awk '{print $4}')
+    SOCKETS=$(lscpu | grep "Socket(s)" | awk '{print $2}')
+    THREADS_PER_CORE=$(lscpu | grep "Thread(s) per core" | awk '{print $4}')
+    
+    TOTAL_PHYSICAL_CORES=$((PHYSICAL_CORES * SOCKETS))
+    TOTAL_THREADS=$((TOTAL_PHYSICAL_CORES * THREADS_PER_CORE))
+    
+    echo "${TOTAL_PHYSICAL_CORES}:${TOTAL_THREADS}:${THREADS_PER_CORE}"
+}
+
+show_compact_freq() {
+    # Получаем информацию о топологии
+    IFS=":" read -r PHYSICAL_CORES TOTAL_THREADS THREADS_PER_CORE <<< $(get_cpu_info)
+    
+    echo -e "${BLUE}└── Частоты потоков:${NC}"
+    
+    # Получаем все частоты
+    freqs=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq | awk '{printf "%.1f\n", $1/1000000}')
+    
+    # Группируем по частотам
+    freq_stats=$(echo "$freqs" | sort -n | uniq -c | awk '{printf "   %d @ %s GHz\n", $1, $2}')
+    
+    # Выводим компактную статистику
+    if [ $(echo "$freq_stats" | wc -l) -eq 1 ]; then
+        echo -e "   ${GREEN}Все @ $(echo "$freqs" | head -1) GHz${NC}"
+    else
+        echo "$freq_stats"
+    fi
+    
+}
+
+show_current() {
+    CURRENT_GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)
+    
+    # Получаем информацию о топологии
+    IFS=":" read -r PHYSICAL_CORES TOTAL_THREADS THREADS_PER_CORE <<< $(get_cpu_info)
+    
+    echo -e "${CYAN}${ICON_CUR} Текущий: ${PURPLE}${CURRENT_GOV}${NC}"
+    echo -e "${BLUE}├── Топология: ${YELLOW}${PHYSICAL_CORES} ядер × ${THREADS_PER_CORE} потока = ${TOTAL_THREADS} потоков${NC}"
+    show_compact_freq
+}
+
+set_governor() {
+    local target_gov="$1"
+    local icon="$2"
+    local name="$3"
+    
+    echo -e "${icon} Установка: ${GREEN}${name}${NC}"
+    
+    for gov_file in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        echo "$target_gov" > "$gov_file"
+    done
+    
+    sleep 0.3
+    show_current
+}
+
+case "${GOVERNOR}" in
+    "p"|"perf"|"performance")
+        set_governor "performance" "${ICON_PERF}" "МАКСИМАЛЬНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ"
+        ;;
+    "ps"|"powersave")
+        set_governor "powersave" "${ICON_SAVE}" "ЭНЕРГОСБЕРЕЖЕНИЕ"
+        ;;
+    "o"|"ondemand")
+        set_governor "ondemand" "${ICON_ADAPT}" "АДАПТИВНЫЙ РЕЖИМ"
+        ;;
+    "s"|"schedutil")
+        set_governor "schedutil" "${ICON_ADAPT}" "СОВРЕМЕННЫЙ АДАПТИВНЫЙ"
+        ;;
+    "cur"|"current"|"")
+        echo -e "${CYAN}${ICON_CPU} Состояние CPU${NC}"
+        echo -e "${BLUE}├── Доступные: ${YELLOW}${AVAILABLE_GOVERNORS}${NC}"
+        show_current
+        ;;
+    "help"|"-h")
+        echo -e "${CYAN}Использование:${NC} sudo $0 [режим]"
+        echo -e "${GREEN}  p, perf    ${NC} - 🚀 Максимальная производительность"
+        echo -e "${GREEN}  ps         ${NC} - 🔋 Энергосбережение"  
+        echo -e "${GREEN}  o          ${NC} - ⚡ Адаптивный режим"
+        echo -e "${GREEN}  s          ${NC} - ⚡ Современный адаптивный"
+        echo -e "${GREEN}  cur        ${NC} - 📊 Текущее состояние"
+        ;;
+    *)
+        echo -e "${RED}×${NC} Неизвестный режим: ${GOVERNOR}"
+        echo -e "${YELLOW}ℹ Используйте:${NC} p, ps, o, s, cur"
+        ;;
+esac
