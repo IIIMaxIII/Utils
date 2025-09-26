@@ -17,14 +17,14 @@ echo -e "${CYAN}=== Мониторинг PCIe для GPU $GPU_NUMBER ===${NC}"
 echo
 
 # Получаем информацию о PCIe
-pcie_info=$(nvidia-smi -i $GPU_NUMBER --query-gpu=pcie.link.gen.current,pcie.lin
+pcie_info=$(nvidia-smi -i $GPU_NUMBER --query-gpu=pcie.link.gen.current,pcie.link.width.current --format=csv,noheader,nounits)
 pcie_gen=$(echo $pcie_info | cut -d',' -f1 | tr -d ' ')
 pcie_width=$(echo $pcie_info | cut -d',' -f2 | tr -d ' ')
 
 # Максимальная пропускная способность
 case "$pcie_gen" in
     "1") max_speed_per_lane=250;;
-    "2") max_speed_per_lane=500;;..
+    "2") max_speed_per_lane=500;;  
     "3") max_speed_per_lane=985;;
     "4") max_speed_per_lane=1969;;
     "5") max_speed_per_lane=3938;;
@@ -34,8 +34,9 @@ esac
 max_speed=$((max_speed_per_lane * pcie_width))
 threshold=$((max_speed * 90 / 100))
 
-echo -e "Текущий режим PCIe: ${YELLOW}Gen$pcie_gen x$pcie_width${NC}"
+echo -e "Текущий режим PCIe: ${GREEN}Gen $pcie_gen, x$pcie_width${NC}"
 echo -e "Максимальная пропускная способность: ${YELLOW}$max_speed MB/s${NC}"
+echo -e "Порог высокой нагрузки (90%): ${RED}$threshold MB/s${NC}"
 echo
 
 echo -e "${CYAN}Замер пропускной способности PCIe ($count измерений)...${NC}"
@@ -51,16 +52,16 @@ echo -e "${BLUE}Измерения:${NC}"
 echo -e "${BLUE}№    Прием (MB/s)   Передача (MB/s)${NC}"
 
 for ((i=1; i<=$count; i++)); do
-    result=$(nvidia-smi dmon -s t -c 1 -i $GPU_NUMBER 2>/dev/null | awk '/^[[:sp
-
+    result=$(nvidia-smi dmon -s t -c 1 -i $GPU_NUMBER 2>/dev/null | awk '/^[[:space:]]*[0-9]/{print $2,$3; exit}')
+    
     if [ -n "$result" ]; then
         rx=$(echo $result | awk '{print $1}')
         tx=$(echo $result | awk '{print $2}')
-
+        
         if [[ "$rx" =~ ^[0-9]+$ ]] && [[ "$tx" =~ ^[0-9]+$ ]]; then
             total_rx=$((total_rx + rx))
             total_tx=$((total_tx + tx))
-
+            
             # Определяем цвет для значений
             if [ $rx -ge $threshold ]; then
                 rx_color=$RED
@@ -70,7 +71,7 @@ for ((i=1; i<=$count; i++)); do
             else
                 rx_color=$GREEN
             fi
-
+            
             if [ $tx -ge $threshold ]; then
                 tx_color=$RED
                 high_load_tx=$((high_load_tx + 1))
@@ -79,8 +80,8 @@ for ((i=1; i<=$count; i++)); do
             else
                 tx_color=$GREEN
             fi
-
-            printf "${NC}%-3d  ${rx_color}%-12d${NC}  ${tx_color}%-12d${NC}\n" "
+            
+            printf "${NC}%-3d  ${rx_color}%-12d${NC}  ${tx_color}%-12d${NC}\n" "$i" "$rx" "$tx"
         else
             printf "${NC}%-3d  %-12s  %-12s\n" "$i" "error" "error"
         fi
@@ -118,12 +119,12 @@ echo
 echo -e "${CYAN}=== РЕЗУЛЬТАТЫ ===${NC}"
 echo -e "Количество измерений: ${YELLOW}$count${NC}"
 echo -e "Средняя пропускная способность:"
-echo -e "  Прием:  ${avg_rx_color}$avg_rx MB/s${NC} (${avg_rx_color}$avg_rx_perc
-echo -e "  Передача: ${avg_tx_color}$avg_tx MB/s${NC} (${avg_tx_color}$avg_tx_pe
+echo -e "  Прием:  ${avg_rx_color}$avg_rx MB/s${NC} (${avg_rx_color}$avg_rx_percent%${NC} от макс.)"
+echo -e "  Передача: ${avg_tx_color}$avg_tx MB/s${NC} (${avg_tx_color}$avg_tx_percent%${NC} от макс.)"
 echo
 echo -e "Замеры с высокой нагрузкой (≥90% от макс.):"
-echo -e "  Прием:  ${RED}$high_load_rx${NC} из $count (${RED}$high_rx_percent%${
-echo -e "  Передача: ${RED}$high_load_tx${NC} из $count (${RED}$high_tx_percent%
+echo -e "  Прием:  ${RED}$high_load_rx${NC} из $count (${RED}$high_rx_percent%${NC})"
+echo -e "  Передача: ${RED}$high_load_tx${NC} из $count (${RED}$high_tx_percent%${NC})"
 
 # Цветовая легенда
 echo
