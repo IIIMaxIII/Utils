@@ -36,7 +36,6 @@ threshold=$((max_speed * 90 / 100))
 
 echo -e "Текущий режим PCIe: ${GREEN}Gen $pcie_gen, x$pcie_width${NC}"
 echo -e "Максимальная пропускная способность: ${YELLOW}$max_speed MB/s${NC}"
-echo -e "Порог высокой нагрузки (90%): ${RED}$threshold MB/s${NC}"
 echo
 
 echo -e "${CYAN}Замер пропускной способности PCIe ($count измерений)...${NC}"
@@ -48,7 +47,6 @@ total_tx=0
 high_load_rx=0
 high_load_tx=0
 
-echo -e "${BLUE}Измерения:${NC}"
 echo -e "${BLUE}№    Прием (MB/s)   Передача (MB/s)${NC}"
 
 for ((i=1; i<=$count; i++)); do
