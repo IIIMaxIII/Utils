@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Скрипт управления CPU governor и частотами
-# Использование: sudo ./governor.sh [режим|частота]
+# Использование: sudo ./governor.sh [режим|максимальная_частота]
 
 GOVERNOR="${1:---current}"
 AVAILABLE_GOVERNORS=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null)
@@ -88,15 +88,17 @@ set_governor() {
     show_current
 }
 
-set_frequency() {
+set_max_frequency() {
     local freq_mhz=$1
     local freq_khz=$((freq_mhz * 1000))
     
-    echo -e "${ICON_FREQ} Установка частоты: ${GREEN}${freq_mhz} MHz${NC}"
+    echo -e "${ICON_FREQ} Установка максимальной частоты: ${GREEN}${freq_mhz} MHz${NC}"
+    echo -e "${GREEN}✓ CPU будет снижать частоту в простое для энергосбережения${NC}"
     
+    # Устанавливаем максимальную частоту, но оставляем адаптивный governor
     for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
-        echo userspace > "$cpu/cpufreq/scaling_governor" 2>/dev/null
-        echo "$freq_khz" > "$cpu/cpufreq/scaling_setspeed" 2>/dev/null
+        echo "$freq_khz" > "$cpu/cpufreq/scaling_max_freq" 2>/dev/null
+        echo "ondemand" > "$cpu/cpufreq/scaling_governor" 2>/dev/null
     done
     
     sleep 0.3
@@ -104,11 +106,13 @@ set_frequency() {
 }
 
 reset_frequency() {
-    echo -e "${ICON_RESET} Сброс частоты: ${GREEN}возврат к адаптивному управлению${NC}"
+    echo -e "${ICON_RESET} Сброс ограничений частоты: ${GREEN}полное снятие ограничений${NC}"
     
-    # Возвращаемся к ondemand как стандартному governor
-    for gov_file in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-        echo "ondemand" > "$gov_file"
+    # Снимаем все ограничения максимальной частоты
+    for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
+        local max_freq=$(cat "$cpu/cpufreq/cpuinfo_max_freq" 2>/dev/null)
+        echo "$max_freq" > "$cpu/cpufreq/scaling_max_freq" 2>/dev/null
+        echo "ondemand" > "$cpu/cpufreq/scaling_governor" 2>/dev/null
     done
     
     sleep 0.3
@@ -116,7 +120,7 @@ reset_frequency() {
 }
 
 show_help() {
-    echo -e "${CYAN}Использование:${NC} sudo $0 [режим|частота]"
+    echo -e "${CYAN}Использование:${NC} sudo $0 [режим|максимальная_частота]"
     echo
     echo -e "${GREEN}Режимы работы:${NC}"
     echo -e "  -p, --performance   - 🚀 Максимальная производительность"
@@ -124,10 +128,13 @@ show_help() {
     echo -e "  -o, --ondemand      - ⚡ Адаптивный режим"  
     echo -e "  -s, --schedutil     - ⚡ Современный адаптивный"
     echo -e "  -c, --current       - 📊 Текущее состояние"
-    echo -e "  -r, --reset         - 🔄 Сброс фиксированной частоты"
+    echo -e "  -r, --reset         - 🔄 Сброс всех ограничений частоты"
     echo
-    echo -e "${GREEN}Фиксированные частоты:${NC}"
-    echo -e "  2000, 2400, 2800, 3200 — частота в МГц"
+    echo -e "${GREEN}Установка максимальной частоты:${NC}"
+    echo -e "  2000, 2400, 2800    - 📈 Максимальная частота (с энергосбережением)"
+    echo
+    echo -e "${YELLOW}Примечание:${NC} CPU будет автоматически снижать частоту"
+    echo -e "в простое для экономии энергии"
 }
 
 case "${GOVERNOR}" in
@@ -152,10 +159,10 @@ case "${GOVERNOR}" in
         show_current
         ;;
     
-    # Фиксированные частоты
+    # Максимальная частота (просто цифры)
     [0-9]*)
         if [[ "${GOVERNOR}" =~ ^[0-9]+$ ]]; then
-            set_frequency "${GOVERNOR}"
+            set_max_frequency "${GOVERNOR}"
         else
             echo -e "${RED}×${NC} Неверный формат частоты: ${GOVERNOR}"
         fi
