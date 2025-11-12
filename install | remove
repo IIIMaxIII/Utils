@@ -1,0 +1,2 @@
+bbr install
+bash <(curl -sSL https://raw.githubusercontent.com/IIIMaxIII/Utils/refs/heads/main/bbr_on.sh)
