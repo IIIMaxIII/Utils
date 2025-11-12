@@ -23,7 +23,7 @@ for setting in "${SETTINGS[@]}"; do
 done
 
 # Применяем изменения
-echo "Применяем настройки..."
+echo -e "\nПрименяем настройки..."
 sudo sysctl -p
 
 # Проверяем BBR
